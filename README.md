@@ -1,59 +1,60 @@
-# Bias Detection in News Sentences
+# Neural Re-ranking on MS MARCO
 
-Classifying biased sentences in news articles using traditional ML and fine-tuned transformer models. Compares Logistic Regression (TF-IDF, BoW) against BERT and DistilBERT on the [Lim et al. (2020)](https://aclanthology.org/2020.lrec-1.175/) crowdsourced annotation dataset.
+Fine-tuning and evaluating neural cross-encoder models for passage re-ranking on the [MS MARCO 2019](https://microsoft.github.io/msmarco/) dataset. Explores model fusion strategies and LLM-based query expansion.
 
-## Task
+## Overview
 
-Given a sentence from a news article, predict whether it is **biased** or **not biased**. Labels are derived from crowdsourced ratings (1–5 scale) via majority vote; sentences rated ≥ 3 are treated as biased.
-
-## Models
-
-| Model | Approach |
+| Notebook | What it does |
 |---|---|
-| Logistic Regression + TF-IDF | Traditional baseline |
-| Logistic Regression + BoW | Traditional baseline |
-| BERT (`bert-base-uncased`) | Fine-tuned transformer |
-| DistilBERT (`distilbert-base-uncased`) | Fine-tuned transformer |
+| `01_finetune_crossencoder.ipynb` | Fine-tunes MiniLM, TinyBERT, and DistilRoBERTa cross-encoders on MS MARCO passage ranking |
+| `02_evaluate_crossencoder.ipynb` | Evaluates fine-tuned models with NDCG@10, Recall@100, MAP@1000 |
+| `03_fusion_reranking.ipynb` | Applies ensemble fusion strategies (RRF, MNZ, Min, Max) across model outputs |
+| `04_query_expansion_llm.ipynb` | Query expansion using Zephyr-7B with Chain-of-Thought prompting |
 
-## Dataset
+## Results
 
-[Biased Sentences in News Articles](https://github.com/skymoonlight/biased-sents-annotation) — loaded directly from GitHub, no manual download needed.
+### Individual model performance (Task 1)
 
-Data is reshaped from wide format (one row per article, 20 sentence columns) to long format (one row per sentence), with majority vote aggregation across annotators.
+| Model | NDCG@10 | Recall@100 | MAP@1000 |
+|---|---|---|---|
+| TinyBERT | 69.58 | 50.36 | 45.46 |
+| MiniLM | 66.05 | 49.64 | 42.63 |
+| DistilRoBERTa | 62.00 | 48.46 | 40.40 |
+
+### Fusion performance (Task 2)
+
+| Method | NDCG@10 | Recall@100 | MAP@1000 |
+|---|---|---|---|
+| RRF (k=30) | **70.21** | 51.22 | 45.42 |
+| RRF (k=60) | 70.02 | **51.32** | **45.55** |
+| MNZ | 69.21 | 51.19 | 45.15 |
+
+RRF consistently outperforms individual models, confirming the value of ensemble re-ranking.
 
 ## Setup
 
-**Requirements:** Python 3.10+, CUDA recommended for transformer fine-tuning.
+These notebooks are designed to run on **Google Colab** with GPU. Models and intermediate outputs are stored to Google Drive.
 
+Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## Data
 
-```bash
-python main.py
-```
+Download the MS MARCO 2019 passage re-ranking data:
+- Queries: `msmarco-test2019-queries.tsv`
+- Top-1000 passages: `msmarco-passagetest2019-top1000.tsv`
+- Relevance judgements: `2019qrels-pass.txt`
 
-This will:
-1. Download and preprocess the dataset automatically
-2. Train and evaluate all four models
-3. Save confusion matrices and comparison plots to the working directory
+Available from the [MS MARCO passage ranking page](https://microsoft.github.io/msmarco/TREC-Deep-Learning-2019).
 
-## Output
+## Run order
 
-- `lr_TF-IDF_conf_mat.png` > confusion matrix for LR + TF-IDF
-- `lr_BOW_conf_mat.png` > confusion matrix for LR + BoW
-- `bert-base-uncased_conf_mat.png` > confusion matrix for BERT
-- `distilbert-base-uncased_conf_mat.png` > confusion matrix for DistilBERT
-- `f1_comp.png` > F1 score comparison across all models
-- `acc_comp.png` > accuracy comparison
-- `prec_rec_comp.png` > precision and recall comparison
-
+Run the notebooks in order: `01` → `02` → `03` → `04`. Each notebook saves outputs (ranking runs, model checkpoints) to Google Drive for the next step to consume.
 
 ## Notes
 
-- Transformer models are fine-tuned for 5 epochs with `learning_rate=2e-5`, `batch_size=16`
-- Train/val/test split: 60/20/20, stratified by label
-- Logistic Regression uses `class_weight='balanced'` to handle label imbalance
-- Seeds fixed at 42 for reproducibility
+- All cross-encoders fine-tuned for 1 hour with batch size 32, negative sampling ratio 4:1
+- Evaluation uses 200 dev queries with up to 200 negatives each
+- Task 4 (query expansion) is partially implemented — expanded queries are generated but the full reranking pipeline is pending
